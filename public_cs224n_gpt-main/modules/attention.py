@@ -2,6 +2,9 @@ import torch
 
 from einops import rearrange
 from torch import nn
+import torch.nn.functional as F
+# TODO remove below after testing
+from transformers import GPT2Config
 
 
 class CausalSelfAttention(nn.Module):
@@ -32,9 +35,17 @@ class CausalSelfAttention(nn.Module):
     return proj
 
   def attention(self, key, query, value, attention_mask):
-
+    # each k,q,v is of size bs x num_attention_heads x seq_len x attention_head_size
     ### YOUR CODE HERE
-    raise NotImplementedError
+    dk = key.shape[-1]
+    key_T = key.transpose(2,3)
+    Q_K_T = torch.matmul(query, key_T)# bs x num_attention_heads x seq_len x seq_len
+    Q_K_T = Q_K_T / (dk**0.5)
+    soft_max = F.softmax(Q_K_T+attention_mask, dim=3)
+    weighted_values = torch.matmul(soft_max, value)
+    output = rearrange(weighted_values, 'b h t d -> b t h d')
+    output = output.reshape(output.shape[0], output.shape[1],  -1)
+    return output
 
 
   def forward(self, hidden_states, attention_mask):
@@ -53,3 +64,21 @@ class CausalSelfAttention(nn.Module):
     # Calculate the multi-head attention.
     attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
     return attn_value
+
+
+# if __name__ == "__main__":
+#   bs = 20
+#   heads = 4
+#   seq_len = 10
+#   head_size = 15
+#   hs = head_size * heads
+#   config = GPT2Config(hidden_size=hs,
+#                       num_attention_heads=heads,
+#                       attention_probs_dropout_prob=0.5)
+#   test_attention = CausalSelfAttention(config)
+#   # hidden_states: [bs, seq_len, hidden_state]
+#   hidden_s = torch.rand(bs, seq_len, hs)
+#   # attention_mask: [bs, 1, 1, seq_len]
+#   mask = torch.rand(bs, 1, 1, seq_len)
+#   test_attention(hidden_s, mask)
+#   print('hi')
