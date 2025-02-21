@@ -3,8 +3,6 @@ import torch
 from einops import rearrange
 from torch import nn
 import torch.nn.functional as F
-# TODO remove below after testing
-from transformers import GPT2Config
 
 
 class CausalSelfAttention(nn.Module):
