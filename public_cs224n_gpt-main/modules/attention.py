@@ -37,14 +37,27 @@ class CausalSelfAttention(nn.Module):
   def attention(self, key, query, value, attention_mask):
     # each k,q,v is of size bs x num_attention_heads x seq_len x attention_head_size
     ### YOUR CODE HERE
-    dk = key.shape[-1]
-    key_T = key.transpose(2,3)
-    Q_K_T = torch.matmul(query, key_T)# bs x num_attention_heads x seq_len x seq_len
-    Q_K_T = Q_K_T / (dk**0.5)
-    soft_max = F.softmax(Q_K_T+attention_mask, dim=3)
-    weighted_values = torch.matmul(soft_max, value)
-    output = rearrange(weighted_values, 'b h t d -> b t h d')
-    output = output.reshape(output.shape[0], output.shape[1],  -1)
+    # compute the for product
+    key_T = key.transpose(-2,-1)
+    dot_product_scores = torch.matmul(query, key_T) # bs x num_attention_heads x seq_len x seq_len
+
+    # apply scaling
+    dot_product_scores = dot_product_scores / torch.sqrt(torch.tensor(self.attention_head_size, dtype=key.dtype, device=key.device))
+
+    # TODO: check masked filled
+    # mask out the padding tokens
+    dot_product_scores = dot_product_scores.masked_fill(attention_mask==0, float('-inf'))
+    # mask out the future tokens
+    future_mask = torch.triu(torch.ones(dot_product_scores.shape[-1], dot_product_scores.shape[-1]), diagonal=1).to(device=key.device)
+    dot_product_scores = dot_product_scores.masked_fill(future_mask==1, float('-inf'))
+
+    # attention weights
+    weights = F.softmax(dot_product_scores, dim=-1)
+    weights = self.dropout(weights)
+
+    # calculate weighted values
+    weighted_values = torch.matmul(weights, value)
+    output = rearrange(weighted_values, 'b h t d -> b t (h d)')
     return output
 
 
@@ -65,9 +78,9 @@ class CausalSelfAttention(nn.Module):
     attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
     return attn_value
 
-
+#
 # if __name__ == "__main__":
-#   bs = 20
+#   bs = 2
 #   heads = 4
 #   seq_len = 10
 #   head_size = 15
@@ -79,6 +92,7 @@ class CausalSelfAttention(nn.Module):
 #   # hidden_states: [bs, seq_len, hidden_state]
 #   hidden_s = torch.rand(bs, seq_len, hs)
 #   # attention_mask: [bs, 1, 1, seq_len]
-#   mask = torch.rand(bs, 1, 1, seq_len)
+#   mask = torch.tensor([[[[1, 1, 1, 1, 0, 0, 0, 0, 0, 0]]],
+#                        [[[1, 1, 1, 1, 1, 1, 1, 1, 0, 0]]]])
 #   test_attention(hidden_s, mask)
 #   print('hi')
