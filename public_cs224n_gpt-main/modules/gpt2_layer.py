@@ -10,7 +10,7 @@ class GPT2Layer(nn.Module):
     # Multi-head attention.
     self.self_attention = CausalSelfAttention(config)
     # Add-norm for multi-head attention.
-    self.attention_dense = nn.Linear(config.hidden_size, config.hidden_size)
+    self.attention_dense = nn.Linear(config.hidden_size, config.hidden_size) # mix the heads' information
     self.attention_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
     self.attention_dropout = nn.Dropout(config.hidden_dropout_prob)
     # Feed forward.
@@ -30,6 +30,9 @@ class GPT2Layer(nn.Module):
         IN THIS FUNCTION.
     """
     ### YOUR CODE HERE
+    transformed_output = dense_layer(output)
+    transformed_output = dropout(transformed_output)
+    return input + transformed_output
     raise NotImplementedError
 
 
@@ -43,5 +46,23 @@ class GPT2Layer(nn.Module):
     """
 
     ### YOUR CODE HERE
+    # Layer Norm
+    norm_hidden_states = self.attention_layer_norm(hidden_states)
+    # Multi-head attention
+    attention_output = self.self_attention(norm_hidden_states, attention_mask)
+    # Add-norm
+    attention_output = self.add(hidden_states, attention_output, self.attention_dense, self.attention_dropout)
+    # Layer Norm
+    norm_attention_output = self.out_layer_norm(attention_output)
+    # Feed forward
+    # intermediate linear layer
+    intermediate_output = self.interm_dense(norm_attention_output)
+    # activation function
+    intermediate_output = self.interm_af(intermediate_output)
+    # output
+    output = self.add(norm_attention_output, intermediate_output, self.out_dense, self.out_dropout)
+    return output
+
+
     raise NotImplementedError
 
