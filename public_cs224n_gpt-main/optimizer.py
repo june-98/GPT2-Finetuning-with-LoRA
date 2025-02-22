@@ -2,6 +2,7 @@ from typing import Callable, Iterable, Tuple
 import math
 
 import torch
+from sympy.abc import epsilon
 from torch.optim import Optimizer
 
 
@@ -40,11 +41,11 @@ class AdamW(Optimizer):
                     raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
 
                 # State should be stored in this dictionary.
+                # indexed by param (saves 1st and 2nd momments)
                 state = self.state[p]
 
                 # Access hyperparameters from the `group` dictionary.
                 alpha = group["lr"]
-
 
                 ### TODO: Complete the implementation of AdamW here, reading and saving
                 ###       your state in the `state` dictionary above.
@@ -61,7 +62,21 @@ class AdamW(Optimizer):
                 ###
                 ###       Refer to the default project handout for more details.
                 ### YOUR CODE HERE
-                raise NotImplementedError
-
-
+                if not state: # for the first iteration
+                    state['t'] = 0
+                    state['m'] = 0
+                    state['v'] = 0
+                state['t'] += 1
+                beta_1, beta_2 = group['betas']
+                m_t = beta_1 * state['m'] + (1-beta_1) * grad
+                v_t = beta_2 * state['v'] + (1-beta_2) * (grad **2)
+                if group['correct_bias']:
+                    alpha_t = alpha * math.sqrt(1-beta_2**state['t'])/(1-beta_1**state['t'])
+                    theta_t = p - alpha_t * m_t / (v_t**0.5 + group['eps'])
+                else:
+                    theta_t = p - alpha * m_t / (v_t**0.5 + group['eps'])
+                theta_t -= group['weight_decay'] * alpha * p
+                p.data = theta_t
+                state['m'] = m_t
+                state['v'] = v_t
         return loss
