@@ -72,7 +72,10 @@ class ParaphraseGPT(nn.Module):
 
     'Takes a batch of sentences and produces embeddings for them.'
     ### YOUR CODE HERE
-    raise NotImplementedError
+    gpt_output = self.gpt(input_ids, attention_mask)
+    last_token = gpt_output['last_token']
+    logits = self.paraphrase_detection_head(last_token)
+    return logits
 
 
 
@@ -127,8 +130,12 @@ def train(args):
 
       # Compute the loss, gradients, and update the model's parameters.
       optimizer.zero_grad()
-      logits = model(b_ids, b_mask)
-      preds = torch.argmax(logits, dim=1)
+      logits = model(b_ids, b_mask) # shape (batch_size, 2)
+      preds = torch.argmax(logits, dim=1) # shape (batch_size)
+      
+      # ADDED - Need to check
+      labels = torch.where(labels == 3919, torch.tensor(0).to(device), torch.tensor(1).to(device))
+
       loss = F.cross_entropy(logits, labels, reduction='mean')
       loss.backward()
       optimizer.step()

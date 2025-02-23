@@ -72,7 +72,6 @@ class CausalSelfAttention(nn.Module):
     
     # Calculate the multi-head attention.
     attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
-    print(attn_value)
     return attn_value
 
 #
