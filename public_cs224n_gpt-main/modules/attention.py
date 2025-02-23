@@ -41,10 +41,8 @@ class CausalSelfAttention(nn.Module):
 
     # apply scaling
     dot_product_scores = dot_product_scores / torch.sqrt(torch.tensor(self.attention_head_size, dtype=key.dtype, device=key.device))
-
-    # TODO: check masked filled
     # mask out the padding tokens
-    dot_product_scores = dot_product_scores.masked_fill(attention_mask==0, float('-inf'))
+    dot_product_scores += attention_mask
     # mask out the future tokens
     future_mask = torch.triu(torch.ones(dot_product_scores.shape[-1], dot_product_scores.shape[-1]), diagonal=1).to(device=key.device)
     dot_product_scores = dot_product_scores.masked_fill(future_mask==1, float('-inf'))
@@ -74,6 +72,7 @@ class CausalSelfAttention(nn.Module):
     
     # Calculate the multi-head attention.
     attn_value = self.attention(key_layer, query_layer, value_layer, attention_mask)
+    print(attn_value)
     return attn_value
 
 #

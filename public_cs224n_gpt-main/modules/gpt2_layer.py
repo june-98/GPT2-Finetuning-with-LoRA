@@ -60,7 +60,7 @@ class GPT2Layer(nn.Module):
     # activation function
     intermediate_output = self.interm_af(intermediate_output)
     # output
-    output = self.add(norm_attention_output, intermediate_output, self.out_dense, self.out_dropout)
+    output = self.add(attention_output, intermediate_output, self.out_dense, self.out_dropout)
     return output
 
 

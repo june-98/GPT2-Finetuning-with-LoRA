@@ -84,6 +84,7 @@ class GPT2Model(GPTPreTrainedModel):
     """
     # Get the embedding for each input token.
     embedding_output = self.embed(input_ids=input_ids)
+    
 
     # Feed to a transformer (a stack of GPTLayers).
     sequence_output = self.encode(embedding_output, attention_mask=attention_mask)
