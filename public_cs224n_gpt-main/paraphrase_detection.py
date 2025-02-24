@@ -134,7 +134,7 @@ def train(args):
       preds = torch.argmax(logits, dim=1) # shape (batch_size)
       
       # ADDED - Map 'No'-3919 to 0 and 'Yes'-8505 to 1
-      labels = torch.where(labels == 3919, torch.tensor(0).to(device), torch.tensor(1).to(device))
+      labels = torch.where(labels == 3919, torch.tensor(0), torch.tensor(1)).to(device=device)
 
       loss = F.cross_entropy(logits, labels, reduction='mean')
       loss.backward()
@@ -182,8 +182,8 @@ def test(args):
   test_para_y_pred, test_para_sent_ids = model_test_paraphrase(para_test_dataloader, model, device)
 
   # ADDED - Map 0 to 'No'-3919 and 1 to 'Yes'-8505
-  dev_para_y_pred = torch.where(dev_para_y_pred == 0, torch.tensor(3919).to(device), torch.tensor(8505).to(device))
-  test_para_y_pred = torch.where(test_para_y_pred == 0, torch.tensor(3919).to(device), torch.tensor(8505).to(device))
+  dev_para_y_pred = torch.where(dev_para_y_pred == 0, torch.tensor(3919), torch.tensor(8505)).to(device=device)
+  test_para_y_pred = torch.where(test_para_y_pred == 0, torch.tensor(3919), torch.tensor(8505)).to(device=device)
 
   with open(args.para_dev_out, "w+") as f:
     f.write(f"id \t Predicted_Is_Paraphrase \n")
