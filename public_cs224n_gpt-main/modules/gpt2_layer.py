@@ -33,7 +33,6 @@ class GPT2Layer(nn.Module):
     transformed_output = dense_layer(output)
     transformed_output = dropout(transformed_output)
     return input + transformed_output
-    raise NotImplementedError
 
 
   def forward(self, hidden_states, attention_mask):
@@ -62,7 +61,4 @@ class GPT2Layer(nn.Module):
     # output
     output = self.add(attention_output, intermediate_output, self.out_dense, self.out_dropout)
     return output
-
-
-    raise NotImplementedError
 
