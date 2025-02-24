@@ -33,6 +33,7 @@ def model_eval_paraphrase(dataloader, model, device):
     logits = model(b_ids, b_mask).cpu().numpy()
     preds = np.argmax(logits, axis=1).flatten()
 
+    labels = torch.where(labels == 3919, torch.tensor(0).to(device), torch.tensor(1).to(device))
     y_true.extend(labels)
     y_pred.extend(preds)
     sent_ids.extend(b_sent_ids)
