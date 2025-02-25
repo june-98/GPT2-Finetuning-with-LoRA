@@ -158,7 +158,8 @@ def train(args):
 def test(args):
   """Evaluate your model on the dev and test datasets; save the predictions to disk."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(args.filepath)
+  #TODO: changed this
+  saved = torch.load(args.filepath, map_location=torch.device(device))
 
   model = ParaphraseGPT(saved['args'])
   model.load_state_dict(saved['model'])
@@ -181,9 +182,10 @@ def test(args):
   print(f"dev paraphrase acc :: {dev_para_acc :.3f}")
   test_para_y_pred, test_para_sent_ids = model_test_paraphrase(para_test_dataloader, model, device)
 
+  label_map = {1: 8505, 0: 3919}
   # ADDED - Map 0 to 'No'-3919 and 1 to 'Yes'-8505
-  dev_para_y_pred = torch.where(dev_para_y_pred == 0, torch.tensor(3919), torch.tensor(8505))
-  test_para_y_pred = torch.where(test_para_y_pred == 0, torch.tensor(3919), torch.tensor(8505))
+  dev_para_y_pred = [label_map[x] for x in dev_para_y_pred]
+  test_para_y_pred = [label_map[x] for x in test_para_y_pred]
 
   with open(args.para_dev_out, "w+") as f:
     f.write(f"id \t Predicted_Is_Paraphrase \n")
