@@ -61,6 +61,10 @@ class SonnetGPT(nn.Module):
     not just the distribution over next tokens for the last token!
     """
     ### YOUR CODE HERE
+    gpt_output = self.gpt(input_ids, attention_mask)
+    sequence_output = gpt_output['last_hidden_state']
+    logits = self.gpt.hidden_state_to_token(sequence_output)
+    return logits
     raise NotImplementedError
 
 
@@ -129,14 +133,41 @@ def save_model(model, optimizer, args, filepath):
   torch.save(save_info, filepath)
   print(f"save the model to {filepath}")
 
+#Added function to validate the model
+@torch.no_grad()
+def validate(model, dataloader, device):
+  model.eval()
+  val_loss = 0.0
+  num_batches = 0
+
+  for batch in tqdm(dataloader, desc = 'val', disable = TQDM_DISABLE):
+    # Get the input and move it to the gpu.
+    b_ids, b_mask = batch['token_ids'], batch['attention_mask']
+    b_ids = b_ids.to(device)
+    b_mask = b_mask.to(device)
+
+    logits = model(b_ids, b_mask)
+    logits = rearrange(logits[:, :-1].contiguous(), 'b t d -> (b t) d')  # Ignore the last prediction in the sequence.
+    labels = b_ids[:, 1:].contiguous().flatten()  # Ignore the first token to compose the labels.
+    loss = F.cross_entropy(logits, labels, reduction='mean')
+
+    val_loss += loss.item()
+    num_batches += 1
+  return val_loss / num_batches if num_batches > 0 else float('inf')
 
 def train(args):
-  """Train GPT-2 for paraphrase detection on the Quora dataset."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
   # Create the data and its corresponding datasets and dataloader.
+  # Added a split for validation date set
   sonnet_dataset = SonnetsDataset(args.sonnet_path)
+  collate_fn = sonnet_dataset.collate_fn
+  train_size = int(args.train_size * len(sonnet_dataset))
+  val_size = len(sonnet_dataset) - train_size
+  sonnet_dataset, val_dataset = torch.utils.data.random_split(sonnet_dataset, [train_size, val_size])
   sonnet_dataloader = DataLoader(sonnet_dataset, shuffle=True, batch_size=args.batch_size,
-                                 collate_fn=sonnet_dataset.collate_fn)
+                                 collate_fn=collate_fn)
+  val_dataloader = DataLoader(val_dataset, shuffle=True, batch_size=args.batch_size,
+                                 collate_fn=collate_fn)
 
   # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
   held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_path)
@@ -147,6 +178,11 @@ def train(args):
 
   lr = args.lr
   optimizer = AdamW(model.parameters(), lr=lr)
+
+  # Added argument for early stopping
+  best_val_loss = float("inf")
+  patience = args.patience
+  no_improvement_count = 0
 
   # Run for the specified number of epochs.
   for epoch in range(args.epochs):
@@ -175,6 +211,26 @@ def train(args):
     train_loss = train_loss / num_batches
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}.")
     print('Generating several output sonnets...')
+    # Added validation phase
+    val_loss = validate(model, val_dataloader, device)
+    if val_loss == float('inf'):
+      print("No data for validation")
+    
+    # Early stopping
+    if val_loss < best_val_loss:
+      print(f"Validation loss improved from {best_val_loss:.4f} to {val_loss:.4f}!")
+      best_val_loss = val_loss
+      no_improvement_count = 0
+      save_model(model, optimizer, args, f'best_{args.filepath}')
+    else:
+      no_improvement_count += 1
+      print(f"No improvement in val loss for {no_improvement_count} epoch(s).")
+      if no_improvement_count >= patience:
+          print("Early stopping triggered!")
+          break
+    print(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f}")
+    
+    
     model.eval()
     for batch in held_out_sonnet_dataset:
       encoding = model.tokenizer(batch[1], return_tensors='pt', padding=True, truncation=True).to(device)
@@ -182,7 +238,7 @@ def train(args):
       print(f'{batch[1]}{output[1]}\n\n')
 
     # TODO: consider a stopping condition to prevent overfitting on the small dataset of sonnets.
-    save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
+    # save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
 
 
 @torch.no_grad()
@@ -226,6 +282,10 @@ def get_args():
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
   parser.add_argument("--use_gpu", action='store_true')
+
+  #Added argument for early stopping
+  parser.add_argument("--train_size", type=int, default=0.9)
+  parser.add_argument("--patience", type=int, default=2)
 
   # Generation parameters.
   parser.add_argument("--temperature", type=float, help="softmax temperature.", default=1.2)
