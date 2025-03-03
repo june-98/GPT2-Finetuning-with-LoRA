@@ -65,7 +65,6 @@ class SonnetGPT(nn.Module):
     sequence_output = gpt_output['last_hidden_state']
     logits = self.gpt.hidden_state_to_token(sequence_output)
     return logits
-    raise NotImplementedError
 
 
   def get_device(self):
@@ -244,7 +243,9 @@ def train(args):
 @torch.no_grad()
 def generate_submission_sonnets(args):
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
+  # TODO: changed to early stop file
+  saved = torch.load(f'best_{args.filepath}', weights_only=False)
+  # saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
 
   model = SonnetGPT(saved['args'])
   model.load_state_dict(saved['model'])
