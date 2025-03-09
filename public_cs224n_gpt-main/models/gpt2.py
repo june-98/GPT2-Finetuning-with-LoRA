@@ -6,7 +6,7 @@ from config import GPT2Config
 from models.base_gpt import GPTPreTrainedModel
 from modules.gpt2_layer import GPT2Layer
 from utils import get_extended_attention_mask
-
+from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
 
 class GPT2Model(GPTPreTrainedModel):
   """
@@ -150,3 +150,21 @@ class GPT2Model(GPTPreTrainedModel):
     our_model.final_layer_norm.bias.data = gpt_model.state_dict()['ln_f.bias']
 
     return our_model
+
+
+# TODO: wrap model with peft configurations
+def add_peft_configuration(model, lora_config):
+  peft_config = LoraConfig(
+    init_lora_weights="gaussian",
+    # use LORA on self attention layers
+    target_modules = ['c_attn', 'c_proj'],
+    r = lora_config.lora_rank,
+    lora_alpha = lora_config.lora_alpha,
+    lora_dropout = lora_config.lora_dropout,
+    bias='none',
+    task_type=lora_config.lora_task_type,
+    fan_in_fan_out =True)
+
+  peft_model = get_peft_model(model, peft_config)
+  # peft_model.print_trainable_parameters()
+  return peft_model
