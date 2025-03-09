@@ -29,7 +29,7 @@ from datasets import (
 )
 from evaluation import model_eval_paraphrase, model_test_paraphrase
 from models.gpt2 import GPT2Model, add_peft_configuration
-from peft import TaskType
+from peft import TaskType, PeftModel, PeftConfig
 from optimizer import AdamW
 
 TQDM_DISABLE = False
@@ -48,7 +48,7 @@ def seed_everything(seed=11711):
 class ParaphraseGPT(nn.Module):
   """Your GPT-2 Model designed for paraphrase detection."""
 
-  def __init__(self, args, lora_config):
+  def __init__(self, args, lora_config=None):
     super().__init__()
     # TODO: added lora config
     if lora_config:
@@ -88,6 +88,27 @@ class ParaphraseGPT(nn.Module):
     return logits
 
 
+def save_lora_model(model, optimizer, args, filepath):
+  peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  model.gpt.save_pretrained(peft_model_id)
+  save_model(model, optimizer, args, filepath)
+  print(f"save the model to {filepath}")
+
+def load_lora_model(args):
+  # old_load = load_model(args, device, lora_config)
+  # model_params = cur_model.state_dict()
+  # lora_params = [x for x in model_params.keys() if 'lora' in x]
+  peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  config = PeftConfig.from_pretrained(peft_model_id)
+  base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
+  model = PeftModel.from_pretrained(base_model, peft_model_id)
+  return model
+
+def load_model(args, device, lora_config):
+  saved = torch.load(args.filepath, map_location=torch.device(device))
+  model = ParaphraseGPT(saved['args'], lora_config)
+  model.load_state_dict(saved['model'])
+  return model
 
 def save_model(model, optimizer, args, filepath):
   save_info = {
@@ -159,20 +180,23 @@ def train(args, lora_config):
 
     if dev_acc > best_dev_acc:
       best_dev_acc = dev_acc
-      save_model(model, optimizer, args, args.filepath)
+      if lora_config:
+        save_lora_model(model, optimizer, args, args.filepath)
+      else:
+        save_model(model, optimizer, args, args.filepath)
 
     print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev acc :: {dev_acc :.3f}")
 
 
 @torch.no_grad()
-def test(args):
+def test(args, lora_config):
   """Evaluate your model on the dev and test datasets; save the predictions to disk."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-  #TODO: changed this
-  saved = torch.load(args.filepath, map_location=torch.device(device))
-
-  model = ParaphraseGPT(saved['args'])
-  model.load_state_dict(saved['model'])
+  #TODO: changed this to fit loading lora
+  if args.use_lora:
+    model = load_lora_model(args)
+  else:
+    model = load_model(args, device, lora_config)
   model = model.to(device)
   model.eval()
   print(f"Loaded model to test from {args.filepath}")
@@ -258,7 +282,8 @@ def add_arguments(args):
 
 if __name__ == "__main__":
   args = get_args()
-  args.filepath = f'{args.epochs}-{args.lr}-paraphrase.pt'  # Save path.
+  lora_params = f"_lora_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  args.filepath = f'{args.epochs}-{args.lr}-paraphrase{lora_params if args.use_lora else ""}.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
 
   lora_config = None
@@ -270,4 +295,4 @@ if __name__ == "__main__":
       lora_task_type = TaskType.QUESTION_ANS
   )
   train(args, lora_config)
-  test(args)
+  test(args, lora_config)
