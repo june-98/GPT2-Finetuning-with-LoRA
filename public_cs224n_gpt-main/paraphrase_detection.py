@@ -59,8 +59,11 @@ class ParaphraseGPT(nn.Module):
     self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
 
     # By default, fine-tune the full model.
-    for param in self.gpt.parameters():
-      param.requires_grad = True
+    if lora_config is None:
+      for param in self.gpt.parameters():
+        param.requires_grad = True
+    # print how many parameters we are finetuning
+    self.gpt.print_trainable_parameters()
 
   def forward(self, input_ids, attention_mask):
     """
@@ -94,14 +97,16 @@ def save_lora_model(model, optimizer, args, filepath):
   save_model(model, optimizer, args, filepath)
   print(f"save the model to {filepath}")
 
-def load_lora_model(args):
+def load_lora_model(args, model):
   # old_load = load_model(args, device, lora_config)
   # model_params = cur_model.state_dict()
   # lora_params = [x for x in model_params.keys() if 'lora' in x]
   peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
   config = PeftConfig.from_pretrained(peft_model_id)
-  base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
-  model = PeftModel.from_pretrained(base_model, peft_model_id)
+  base_gpt = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
+  gpt = PeftModel.from_pretrained(base_gpt, peft_model_id)
+
+  model.gpt = gpt
   return model
 
 def load_model(args, device, lora_config):
@@ -139,7 +144,7 @@ def train(args, lora_config):
   para_dev_dataloader = DataLoader(para_dev_data, shuffle=False, batch_size=args.batch_size,
                                    collate_fn=para_dev_data.collate_fn)
 
-  args = add_arguments(args)
+  # args = add_arguments(args)
   model = ParaphraseGPT(args, lora_config)
   model = model.to(device)
 
@@ -193,10 +198,10 @@ def test(args, lora_config):
   """Evaluate your model on the dev and test datasets; save the predictions to disk."""
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
   #TODO: changed this to fit loading lora
+  model = load_model(args, device, lora_config)
   if args.use_lora:
-    model = load_lora_model(args)
-  else:
-    model = load_model(args, device, lora_config)
+    # add the lora adapter
+    model = load_lora_model(args, model)
   model = model.to(device)
   model.eval()
   print(f"Loaded model to test from {args.filepath}")
@@ -292,7 +297,8 @@ if __name__ == "__main__":
       lora_rank = args.lora_rank,
       lora_alpha = args.lora_alpha,
       lora_dropout = args.lora_dropout,
-      # lora_task_type = TaskType.QUESTION_ANS
+      lora_task_type = TaskType.QUESTION_ANS
   )
-  # train(args, lora_config)
+  args = add_arguments(args)
+  train(args, lora_config)
   test(args, lora_config)

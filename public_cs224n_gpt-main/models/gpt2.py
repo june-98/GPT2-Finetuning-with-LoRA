@@ -162,7 +162,7 @@ def add_peft_configuration(model, lora_config):
     lora_alpha = lora_config.lora_alpha,
     lora_dropout = lora_config.lora_dropout,
     bias='none',
-    # task_type=lora_config.lora_task_type,
+    task_type=lora_config.lora_task_type,
     fan_in_fan_out =True)
 
   peft_model = get_peft_model(model, peft_config)
