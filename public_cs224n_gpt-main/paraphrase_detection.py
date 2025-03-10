@@ -292,7 +292,7 @@ if __name__ == "__main__":
       lora_rank = args.lora_rank,
       lora_alpha = args.lora_alpha,
       lora_dropout = args.lora_dropout,
-      lora_task_type = TaskType.QUESTION_ANS
+      # lora_task_type = TaskType.QUESTION_ANS
   )
   # train(args, lora_config)
   test(args, lora_config)
