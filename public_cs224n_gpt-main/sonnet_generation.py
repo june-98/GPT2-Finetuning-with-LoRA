@@ -17,14 +17,15 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, AutoModelForCausalLM, AutoTokenizer
 from einops import rearrange
 
 from datasets import (
   SonnetsDataset,
 )
-from models.gpt2 import GPT2Model
-
+from models.gpt2 import GPT2Model, add_peft_configuration
+from peft import TaskType, PeftConfig, PeftModel
+from types import SimpleNamespace
 from optimizer import AdamW
 
 TQDM_DISABLE = False
@@ -44,15 +45,24 @@ def seed_everything(seed=11711):
 class SonnetGPT(nn.Module):
   """Your GPT-2 Model designed for paraphrase detection."""
 
-  def __init__(self, args):
+  def __init__(self, args, lora_config=None):
     super().__init__()
-    self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
-    self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-    self.tokenizer.pad_token = self.tokenizer.eos_token
+    
+    if lora_config:
+      # Use LoRA for fine-tuning
+      self.gpt = AutoModelForCausalLM.from_pretrained(args.model_size)
+      self.gpt = add_peft_configuration(self.gpt, lora_config)
+      self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
+      self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    # By default, fine-tune the full model. TODO: this is maybe not idea.
-    for param in self.gpt.parameters():
-      param.requires_grad = True
+    else:
+      self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
+      self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+      self.tokenizer.pad_token = self.tokenizer.eos_token
+
+      # By default, fine-tune the full model. TODO: this is maybe not idea.
+      for param in self.gpt.parameters():
+        param.requires_grad = True
 
   def forward(self, input_ids, attention_mask):
     """
@@ -61,9 +71,13 @@ class SonnetGPT(nn.Module):
     not just the distribution over next tokens for the last token!
     """
     ### YOUR CODE HERE
+    '''
     gpt_output = self.gpt(input_ids, attention_mask)
     sequence_output = gpt_output['last_hidden_state']
     logits = self.gpt.hidden_state_to_token(sequence_output)
+    '''
+    gpt_output = self.gpt(input_ids, attention_mask)
+    logits = gpt_output.logits
     return logits
 
 
@@ -132,6 +146,26 @@ def save_model(model, optimizer, args, filepath):
   torch.save(save_info, filepath)
   print(f"save the model to {filepath}")
 
+def save_lora_model(model, optimizer, args, filepath):
+  peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  model.gpt.save_pretrained(peft_model_id)
+  model.gpt.config.save_pretrained(peft_model_id)
+  save_model(model, optimizer, args, filepath)
+  print(f"save the model to {filepath}")
+ 
+def load_model(args, device, lora_config=None):
+  saved = torch.load(args.filepath, map_location=torch.device(device))
+  model = SonnetGPT(saved['args'], lora_config=lora_config)
+  model.load_state_dict(saved['model'])
+  return model
+
+def load_lora_model(args, device):
+  peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  config = PeftConfig.from_pretrained(peft_model_id)
+  base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
+  model = PeftModel.from_pretrained(base_model, peft_model_id)
+  return model
+
 #Added function to validate the model
 @torch.no_grad()
 def validate(model, dataloader, device):
@@ -154,7 +188,7 @@ def validate(model, dataloader, device):
     num_batches += 1
   return val_loss / num_batches if num_batches > 0 else float('inf')
 
-def train(args):
+def train(args, lora_config):
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
   # Create the data and its corresponding datasets and dataloader.
   # Added a split for validation date set
@@ -172,7 +206,7 @@ def train(args):
   held_out_sonnet_dataset = SonnetsDataset(args.held_out_sonnet_path)
 
   args = add_arguments(args)
-  model = SonnetGPT(args)
+  model = SonnetGPT(args, lora_config=lora_config)
   model = model.to(device)
 
   lr = args.lr
@@ -220,7 +254,10 @@ def train(args):
       print(f"Validation loss improved from {best_val_loss:.4f} to {val_loss:.4f}!")
       best_val_loss = val_loss
       no_improvement_count = 0
-      save_model(model, optimizer, args, f'best_{args.filepath}')
+      if lora_config:
+        save_lora_model(model, optimizer, args, f'best_{args.filepath}')
+      else:
+        save_model(model, optimizer, args, f'best_{args.filepath}')
     else:
       no_improvement_count += 1
       print(f"No improvement in val loss for {no_improvement_count} epoch(s).")
@@ -244,11 +281,15 @@ def train(args):
 def generate_submission_sonnets(args):
   device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
   # TODO: changed to early stop file
-  saved = torch.load(f'best_{args.filepath}', weights_only=False)
+  # saved = torch.load(f'best_{args.filepath}', weights_only=False)
   # saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
+  if args.use_lora:
+    model = load_lora_model(args, device)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+  else:
+    model = load_model(args, device)
+    tokenizer = model.tokenizer
 
-  model = SonnetGPT(saved['args'])
-  model.load_state_dict(saved['model'])
   model = model.to(device)
   model.eval()
 
@@ -258,9 +299,9 @@ def generate_submission_sonnets(args):
   generated_sonnets = []
   for batch in held_out_sonnet_dataset:
     sonnet_id = batch[0]
-    encoding = model.tokenizer(batch[1], return_tensors='pt', padding=False, truncation=True).to(device)
+    encoding = tokenizer(batch[1], return_tensors='pt', padding=False, truncation=True).to(device)
     output = model.generate(encoding['input_ids'], temperature=args.temperature, top_p=args.top_p)[0][0]
-    decoded_output = model.tokenizer.decode(output)
+    decoded_output = tokenizer.decode(output, skip_special_tokens=True)
     full_sonnet = f'{decoded_output}\n\n'
     generated_sonnets.append((sonnet_id, full_sonnet))
 
@@ -298,6 +339,12 @@ def get_args():
   parser.add_argument("--model_size", type=str, help="The model size as specified on hugging face.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], default='gpt2')
 
+  # LoRA Config parameters
+  parser.add_argument("--use_lora", action='store_true', help="Use LoRA for fine-tuning")
+  parser.add_argument("--lora_rank", type=int, default=16)
+  parser.add_argument("--lora_alpha", type=int, default=16)
+  parser.add_argument("--lora_dropout", type=float, default=0.1)
+
   args = parser.parse_args()
   return args
 
@@ -325,5 +372,15 @@ if __name__ == "__main__":
   args = get_args()
   args.filepath = f'{args.epochs}-{args.lr}-sonnet.pt'  # Save path.
   seed_everything(args.seed)  # Fix the seed for reproducibility.
-  train(args)
+  
+  # TODO: add LoRA config
+  lora_config = None
+  if args.use_lora:
+    lora_config = SimpleNamespace(
+      lora_rank = args.lora_rank,
+      lora_alpha = args.lora_alpha, 
+      lora_dropout = args.lora_dropout,
+      lora_task_type = TaskType.CAUSAL_LM
+    )
+  train(args, lora_config)
   generate_submission_sonnets(args)

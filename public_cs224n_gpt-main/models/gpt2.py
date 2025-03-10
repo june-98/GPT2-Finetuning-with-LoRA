@@ -166,5 +166,5 @@ def add_peft_configuration(model, lora_config):
     fan_in_fan_out =True)
 
   peft_model = get_peft_model(model, peft_config)
-  # peft_model.print_trainable_parameters()
+  peft_model.print_trainable_parameters()
   return peft_model
