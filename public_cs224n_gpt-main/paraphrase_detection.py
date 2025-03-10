@@ -294,5 +294,5 @@ if __name__ == "__main__":
       lora_dropout = args.lora_dropout,
       lora_task_type = TaskType.QUESTION_ANS
   )
-  train(args, lora_config)
+  # train(args, lora_config)
   test(args, lora_config)
