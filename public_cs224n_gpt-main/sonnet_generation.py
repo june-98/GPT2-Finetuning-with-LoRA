@@ -19,6 +19,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import GPT2Tokenizer
 from einops import rearrange
+from datetime import datetime
+
 
 from datasets import (
   SonnetsDataset,
@@ -184,6 +186,18 @@ def train(args):
   patience = args.patience
   no_improvement_count = 0
 
+<<<<<<< Updated upstream
+=======
+  print(f"LoRA Flag: {args.use_lora}")
+
+  # Track time
+  # Log the start time of the entire training
+  train_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  print(f"Training started at: {train_start_time}")
+  with open(args.loss_output, "a") as f:
+    f.write(f"Training started at: {train_start_time}\n")
+
+>>>>>>> Stashed changes
   # Run for the specified number of epochs.
   for epoch in range(args.epochs):
     model.train()
@@ -229,6 +243,17 @@ def train(args):
           print("Early stopping triggered!")
           break
     print(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f}")
+    # Append train and validation loss to a file
+
+    # Track loss and time
+    # Log the end time of each epoch
+    epoch_end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Epoch {epoch} ended at: {epoch_end_time}")
+
+    # Append train and validation loss along with end time to a file
+    with open(args.loss_output, "a") as f:
+        f.write(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f} | ended at: {epoch_end_time}\n")
+
     
     
     model.eval()
@@ -297,6 +322,17 @@ def get_args():
   parser.add_argument("--model_size", type=str, help="The model size as specified on hugging face.",
                       choices=['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl'], default='gpt2')
 
+<<<<<<< Updated upstream
+=======
+  # LoRA Config parameters
+  parser.add_argument("--use_lora", action='store_true', help="Use LoRA for fine-tuning")
+  parser.add_argument("--lora_rank", type=int, default=16)
+  parser.add_argument("--lora_alpha", type=int, default=16)
+  parser.add_argument("--lora_dropout", type=float, default=0.1)
+
+  # Training log parameter
+  parser.add_argument("--loss_output", type=str,default="train_log/sonnets.txt")
+>>>>>>> Stashed changes
   args = parser.parse_args()
   return args
 
