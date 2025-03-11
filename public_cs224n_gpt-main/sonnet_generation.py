@@ -54,6 +54,7 @@ class SonnetGPT(nn.Module):
       self.gpt = add_peft_configuration(self.gpt, lora_config)
       self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
       self.tokenizer.pad_token = self.tokenizer.eos_token
+      
 
     else:
       self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
@@ -160,11 +161,27 @@ def load_model(args, device, lora_config=None):
   return model
 
 def load_lora_model(args, device):
+  # peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  # config = PeftConfig.from_pretrained(peft_model_id)
+  # base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
+  # model = PeftModel.from_pretrained(base_model, peft_model_id)
+  # return model
   peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
   config = PeftConfig.from_pretrained(peft_model_id)
   base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
-  model = PeftModel.from_pretrained(base_model, peft_model_id)
-  return model
+  peft_model = PeftModel.from_pretrained(base_model, peft_model_id)
+
+  # Now wrap that PeftModel inside your custom class
+  # which expects to store it in `self.gpt`.
+  custom_model = SonnetGPT(args, lora_config=None)  
+  custom_model.gpt = peft_model  # Overwrite the .gpt with the LoRA model
+
+  # Also fix tokenizer & pad token
+  custom_model.tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+  custom_model.tokenizer.pad_token_id = custom_model.tokenizer.eos_token_id
+  custom_model.gpt.config.pad_token_id = custom_model.tokenizer.eos_token_id
+
+  return custom_model
 
 #Added function to validate the model
 @torch.no_grad()
@@ -285,7 +302,9 @@ def generate_submission_sonnets(args):
   # saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
   if args.use_lora:
     model = load_lora_model(args, device)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+    #tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+    tokenizer = model.tokenizer
+    
   else:
     model = load_model(args, device)
     tokenizer = model.tokenizer
