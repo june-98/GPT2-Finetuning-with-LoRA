@@ -52,18 +52,20 @@ class SonnetGPT(nn.Module):
       # Use LoRA for fine-tuning
       self.gpt = AutoModelForCausalLM.from_pretrained(args.model_size)
       self.gpt = add_peft_configuration(self.gpt, lora_config)
-      self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
+      self.tokenizer = AutoTokenizer.from_pretrained(args.model_size)
       self.tokenizer.pad_token = self.tokenizer.eos_token
       
 
     else:
       self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
-      self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+      self.tokenizer = GPT2Tokenizer.from_pretrained(args.model_size)
       self.tokenizer.pad_token = self.tokenizer.eos_token
 
       # By default, fine-tune the full model. TODO: this is maybe not idea.
       for param in self.gpt.parameters():
         param.requires_grad = True
+    
+    # self.gpt.print_trainable_parameters()
 
   def forward(self, input_ids, attention_mask):
     """
@@ -155,7 +157,7 @@ def save_lora_model(model, optimizer, args, filepath):
   print(f"save the model to {filepath}")
  
 def load_model(args, device, lora_config=None):
-  saved = torch.load(args.filepath, map_location=torch.device(device))
+  saved = torch.load(f'best_{args.filepath}', map_location=torch.device(device))
   model = SonnetGPT(saved['args'], lora_config=lora_config)
   model.load_state_dict(saved['model'])
   return model
@@ -173,11 +175,12 @@ def load_lora_model(args, device):
 
   # Now wrap that PeftModel inside your custom class
   # which expects to store it in `self.gpt`.
+  args = add_arguments(args)
   custom_model = SonnetGPT(args, lora_config=None)  
   custom_model.gpt = peft_model  # Overwrite the .gpt with the LoRA model
 
   # Also fix tokenizer & pad token
-  custom_model.tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+  custom_model.tokenizer = AutoTokenizer.from_pretrained(args.model_size) #args.model_size
   custom_model.tokenizer.pad_token_id = custom_model.tokenizer.eos_token_id
   custom_model.gpt.config.pad_token_id = custom_model.tokenizer.eos_token_id
 
