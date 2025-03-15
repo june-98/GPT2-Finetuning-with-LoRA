@@ -268,6 +268,8 @@ def train(args, lora_config):
     val_loss = validate(model, val_dataloader, device)
     if val_loss == float('inf'):
       print("No data for validation")
+    else:
+      print(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f}")
     
     # Early stopping
     if val_loss < best_val_loss:
@@ -284,7 +286,6 @@ def train(args, lora_config):
       if no_improvement_count >= patience:
           print("Early stopping triggered!")
           break
-    print(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f}")
     
     
     model.eval()
