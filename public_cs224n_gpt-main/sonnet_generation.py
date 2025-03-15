@@ -74,13 +74,14 @@ class SonnetGPT(nn.Module):
     not just the distribution over next tokens for the last token!
     """
     ### YOUR CODE HERE
-    '''
+    
     gpt_output = self.gpt(input_ids, attention_mask)
     sequence_output = gpt_output['last_hidden_state']
     logits = self.gpt.hidden_state_to_token(sequence_output)
     '''
     gpt_output = self.gpt(input_ids, attention_mask)
     logits = gpt_output.logits
+    '''
     return logits
 
 
@@ -157,7 +158,7 @@ def save_lora_model(model, optimizer, args, filepath):
   print(f"save the model to {filepath}")
  
 def load_model(args, device, lora_config=None):
-  saved = torch.load(f'best_{args.filepath}', map_location=torch.device(device))
+  saved = torch.load(f'best_{args.filepath}', map_location=torch.device(device),weights_only=False)
   model = SonnetGPT(saved['args'], lora_config=lora_config)
   model.load_state_dict(saved['model'])
   return model
