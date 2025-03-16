@@ -300,5 +300,5 @@ if __name__ == "__main__":
       lora_task_type = TaskType.QUESTION_ANS
   )
   args = add_arguments(args)
-  train(args, lora_config)
+  # train(args, lora_config)
   test(args, lora_config)
