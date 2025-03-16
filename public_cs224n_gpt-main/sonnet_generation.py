@@ -52,17 +52,20 @@ class SonnetGPT(nn.Module):
       # Use LoRA for fine-tuning
       self.gpt = AutoModelForCausalLM.from_pretrained(args.model_size)
       self.gpt = add_peft_configuration(self.gpt, lora_config)
-      self.tokenizer = AutoTokenizer.from_pretrained('gpt2')
+      self.tokenizer = AutoTokenizer.from_pretrained(args.model_size)
       self.tokenizer.pad_token = self.tokenizer.eos_token
+      
 
     else:
       self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
-      self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+      self.tokenizer = GPT2Tokenizer.from_pretrained(args.model_size)
       self.tokenizer.pad_token = self.tokenizer.eos_token
 
       # By default, fine-tune the full model. TODO: this is maybe not idea.
       for param in self.gpt.parameters():
         param.requires_grad = True
+    
+    # self.gpt.print_trainable_parameters()
 
   def forward(self, input_ids, attention_mask):
     """
@@ -71,13 +74,14 @@ class SonnetGPT(nn.Module):
     not just the distribution over next tokens for the last token!
     """
     ### YOUR CODE HERE
-    '''
+    
     gpt_output = self.gpt(input_ids, attention_mask)
     sequence_output = gpt_output['last_hidden_state']
     logits = self.gpt.hidden_state_to_token(sequence_output)
     '''
     gpt_output = self.gpt(input_ids, attention_mask)
     logits = gpt_output.logits
+    '''
     return logits
 
 
@@ -154,17 +158,34 @@ def save_lora_model(model, optimizer, args, filepath):
   print(f"save the model to {filepath}")
  
 def load_model(args, device, lora_config=None):
-  saved = torch.load(args.filepath, map_location=torch.device(device))
+  saved = torch.load(f'best_{args.filepath}', map_location=torch.device(device),weights_only=False)
   model = SonnetGPT(saved['args'], lora_config=lora_config)
   model.load_state_dict(saved['model'])
   return model
 
 def load_lora_model(args, device):
+  # peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
+  # config = PeftConfig.from_pretrained(peft_model_id)
+  # base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
+  # model = PeftModel.from_pretrained(base_model, peft_model_id)
+  # return model
   peft_model_id = f"{args.epochs}-{args.lr}-LoRA_rank{args.lora_rank}_alpha{args.lora_alpha}"
   config = PeftConfig.from_pretrained(peft_model_id)
   base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
-  model = PeftModel.from_pretrained(base_model, peft_model_id)
-  return model
+  peft_model = PeftModel.from_pretrained(base_model, peft_model_id)
+
+  # Now wrap that PeftModel inside your custom class
+  # which expects to store it in `self.gpt`.
+  args = add_arguments(args)
+  custom_model = SonnetGPT(args, lora_config=None)  
+  custom_model.gpt = peft_model  # Overwrite the .gpt with the LoRA model
+
+  # Also fix tokenizer & pad token
+  custom_model.tokenizer = AutoTokenizer.from_pretrained(args.model_size) #args.model_size
+  custom_model.tokenizer.pad_token_id = custom_model.tokenizer.eos_token_id
+  custom_model.gpt.config.pad_token_id = custom_model.tokenizer.eos_token_id
+
+  return custom_model
 
 #Added function to validate the model
 @torch.no_grad()
@@ -248,6 +269,8 @@ def train(args, lora_config):
     val_loss = validate(model, val_dataloader, device)
     if val_loss == float('inf'):
       print("No data for validation")
+    else:
+      print(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f}")
     
     # Early stopping
     if val_loss < best_val_loss:
@@ -264,7 +287,6 @@ def train(args, lora_config):
       if no_improvement_count >= patience:
           print("Early stopping triggered!")
           break
-    print(f"Epoch {epoch} | train loss: {train_loss:.4f} | val loss: {val_loss:.4f}")
     
     
     model.eval()
@@ -285,7 +307,9 @@ def generate_submission_sonnets(args):
   # saved = torch.load(f'{args.epochs-1}_{args.filepath}', weights_only=False)
   if args.use_lora:
     model = load_lora_model(args, device)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+    #tokenizer = AutoTokenizer.from_pretrained(args.model_size)
+    tokenizer = model.tokenizer
+    
   else:
     model = load_model(args, device)
     tokenizer = model.tokenizer
